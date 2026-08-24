@@ -1,0 +1,47 @@
+{
+  "//": "Installable .claude/settings.json baseline \u2014 encodes GLOBAL_PREFERENCES.md mechanically. Copy to <project>/.claude/settings.json and extend `allow` per repo. The Read-deny on env files is intentional: agents reference env var NAMES only, never VALUES \u2014 secret values stay out of context and out of generated artifacts.",
+  "permissions": {
+    "deny": [
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf $HOME*)",
+      "Bash(curl * | bash*)",
+      "Bash(wget * | sh*)",
+      "Read(env/*.env)",
+      "Read(.env*)",
+      "Read(**/.mcp.json)",
+      "Read(.mcp.json)",
+      "Read(**/secrets/**)"
+    ],
+    "ask": [
+      "Bash(rm *)",
+      "Bash(rmdir *)",
+      "Bash(sudo *)",
+      "Bash(git push*)"
+    ],
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(ls*)",
+      "Bash(pwd)",
+      "Bash(which *)",
+      "Bash(npm test*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run typecheck*)",
+      "Bash(npx tsc --noEmit*)",
+      "Bash(node --version)",
+      "Bash(npm --version)"
+    ]
+  },
+  "env": {
+    "CLAUDE_CODE_EFFORT_LEVEL": "max",
+    "MAX_THINKING_TOKENS": "64000"
+  }
+}

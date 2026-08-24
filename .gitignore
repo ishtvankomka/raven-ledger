@@ -1,0 +1,9 @@
+# Raw project source dumps — contain credential locations, never ship them.
+projects/
+
+.DS_Store
+*.log
+.claude/settings.local.json
+
+# deny list for the library validator — local, may name clients
+sync/private-names.txt
