@@ -90,15 +90,18 @@ AUTH_SCHEME = re.compile(r"(\b(?:bearer|basic)\s+)([A-Za-z0-9+/=_.~-]{12,})", re
 # word segments rather than substrings: `monkey` and `keyboard` are fine, `apiKey` and DB_PASSWORD
 # are not. Only the value is replaced, so a log stays readable (password=[REDACTED]).
 ASSIGNMENT = re.compile(r"""([A-Za-z_][\w.-]*)(["']?\s*[:=]\s*)(["']?)([^\s"',;&)]{3,})""")
-SENSITIVE_SUBSTR = ("secret", "token", "password", "passwd", "apikey", "accesskey", "privatekey", "credential",
+SENSITIVE_SUBSTR = ("secret", "token", "password", "passwd", "apikey", "accesskey", "privatekey",
                     "authorization", "bearer", "dsn", "databaseurl", "connectionstring", "signingkey",
                     "encryptionkey", "masterkey", "cookie")
-SENSITIVE_SEGMENT = {"key", "pwd", "pass", "auth", "private", "creds", "cred"}
+STRONG_SEGMENT = {"key", "pwd"}
+# Weak signals: prose and config say "Auth: magic-link" or "credential.helper = !gh" all the time, so
+# these only count when the value itself looks like a secret (12+ chars, letters and digits).
+WEAK_SEGMENT = {"auth", "private", "pass", "creds", "cred"}
 BENIGN_KEY_PREFIX = {"primary", "foreign", "sort", "cache", "partition", "index", "unique", "composite", "group",
                      "order", "lookup", "hash", "shard", "idempotency", "storage", "translation", "message",
                      "object", "map", "lock", "dedupe", "routing"}
 # Names that contain "token" but are not secrets: pagination cursors, counters, types.
-BENIGN_NAME = re.compile(r"(?:next|prev|previous|page|continuation|cursor|csrf|xsrf)token|token(?:count|type|expiry|ttl|id|name|url|length|limit|usage|used)|tokens$")
+BENIGN_NAME = re.compile(r"(?:next|prev|previous|page|continuation|cursor|csrf|xsrf)token|token(?:count|type|expiry|ttl|id|name|url|length|limit|usage|used)|tokens$|credentials?(?:helper|provider|type|store|manager)")
 # Values that are references, placeholders or states, not secrets: password: required, token: ${TOKEN}.
 BENIGN_VALUE = re.compile(
     r"^(?:\d+|true|false|null|none|nil|yes|no|on|off|undefined|empty|required|optional|string|number|value|bearer|basic"
@@ -233,15 +236,19 @@ def secret_regexes():
     return out
 
 
-def sensitive_name(name):
+def name_strength(name):
+    """'strong' | 'weak' | None - how much a variable NAME suggests its value is a secret."""
     flat = re.sub(r"[^a-z0-9]", "", name.lower())
     if BENIGN_NAME.search(flat):
-        return False
+        return None
     if any(w in flat for w in SENSITIVE_SUBSTR):
-        return True
+        return "strong"
     segs = [s for s in re.split(r"[^a-z0-9]+", re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()) if s]
-    return any(s in SENSITIVE_SEGMENT and not (s == "key" and i and segs[i - 1] in BENIGN_KEY_PREFIX)
-               for i, s in enumerate(segs))
+    if any(s in STRONG_SEGMENT and not (s == "key" and i and segs[i - 1] in BENIGN_KEY_PREFIX) for i, s in enumerate(segs)):
+        return "strong"
+    if "credential" in flat or any(s in WEAK_SEGMENT for s in segs):
+        return "weak"
+    return None
 
 
 def redact(text, regexes):
@@ -258,7 +265,10 @@ def redact(text, regexes):
 
     def assignment(m):
         name, sep, quote, value = m.groups()
-        if BENIGN_VALUE.match(value) or not sensitive_name(name):
+        strength = name_strength(name)
+        if not strength or BENIGN_VALUE.match(value):
+            return m.group(0)
+        if strength == "weak" and not (len(value) >= 12 and re.search(r"\d", value) and re.search(r"[A-Za-z]", value)):
             return m.group(0)
         hits[0] += 1
         return name + sep + quote + "[REDACTED]"

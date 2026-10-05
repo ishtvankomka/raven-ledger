@@ -8,8 +8,8 @@
 #
 # Git worktrees each carry their OWN copy of settings.local.json (made when the worktree was
 # created), so wiring only the main checkout would leave every existing worktree on the old
-# hooks — and most sessions run in worktrees. The same wiring is therefore applied to each
-# worktree that already has a settings.local.json; none is created.
+# hooks — and most sessions run in worktrees. The same wiring is therefore applied to every
+# existing worktree; one that has no settings.local.json gets a file carrying just this wiring.
 #
 # Token tuning (env, machine-local, never overrides a value the shell, the project's
 # settings.json or ~/.claude/settings.json already sets):
@@ -162,6 +162,7 @@ def wire(target, strict):
         data["permissions"] = dict(perm, allow=have + allowed)
 
     if changed or pruned or tuned or allowed:
+        os.makedirs(os.path.dirname(target), exist_ok=True)
         with open(target, "w") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
@@ -186,15 +187,21 @@ res = wire(path, True)
 text = describe(res)
 print(f"install-project: {text} into {path}" if text else f"install-project: already wired — {path} unchanged")
 
-# Existing worktrees: only files that are already there, so no worktree gains settings it never had.
-wts = sorted(glob.glob(os.path.join(proj, ".claude", "worktrees", "*", ".claude", "settings.local.json")))
-touched = 0
-for w in wts:
-    r = wire(w, False)
+# Existing worktrees (a real one has a .git entry; a leftover empty directory is skipped). A worktree
+# with no local settings would get no note and no permission rule, so it is wired too.
+wts = sorted(d for d in glob.glob(os.path.join(proj, ".claude", "worktrees", "*"))
+             if os.path.exists(os.path.join(d, ".git")))
+touched = created = 0
+for d in wts:
+    target = os.path.join(d, ".claude", "settings.local.json")
+    existed = os.path.exists(target)
+    r = wire(target, False)
     if r and any(r):
         touched += 1
+        created += (not existed)
 if wts:
-    print(f"install-project: {len(wts)} existing worktree(s) with local settings — {touched} updated")
+    extra = f" ({created} had no local settings and now carry the wiring)" if created else ""
+    print(f"install-project: {len(wts)} existing worktree(s) — {touched} updated{extra}")
 PY
 STATUS=$?
 if [ $STATUS -ne 0 ]; then exit $STATUS; fi

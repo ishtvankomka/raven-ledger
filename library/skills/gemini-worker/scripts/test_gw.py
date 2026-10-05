@@ -63,6 +63,7 @@ SECRETS = [  # (label, text, fragment that must NOT survive redaction)
     ("google key", "key=" + _j("AIza", "SyA-", "1234567890abcdefghijklmnopqrstu"), "1234567890abcdef"),
     ("yaml password", "password: 'correct-horse-battery'", "correct-horse"),
     ("cookie", "Cookie: sid=" + _j("a1b2", "c3d4", "e5f6"), "a1b2c3d4"),
+    ("weak name, secret-looking value", "AUTH=" + _j("a1b2c3d4", "e5f6g7h8"), "a1b2c3d4"),
     ("worker's own key", "slot " + _j("AQ.", "Ab8RN6", "IPA2JEjxTxMg", "-DIVQhGdvXMAkLIno2Lv9_2iWfgLWMiQ"), "Ab8RN6IPA2"),
 ]
 ORDINARY = [  # must pass through byte-for-byte: redacting ordinary logs would make the worker useless
@@ -74,6 +75,8 @@ ORDINARY = [  # must pass through byte-for-byte: redacting ordinary logs would m
     "INFO  [auth] user bob logged in from 10.0.0.7", "tokens_used=1532 cost=0.02", "next_page_token=abc",
     "author=bob title=Hello", "https://example.com/docs/page?id=7&lang=en", "Content-Type: application/json",
     "key=value pairs here", "foreign_key: user_id", "password_min_length: 12",
+    "Auth: magic-link for customers", "auth: argon2id", "credential.helper = !gh", "private: true",
+    "Auth: Better Auth (cookie) + opaque sessions",
     "2026-10-05 09:00:00 INFO [api] GET /v1/items/123 200 15ms",
 ]
 

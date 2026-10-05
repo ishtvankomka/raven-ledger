@@ -19,7 +19,7 @@ gets an entry here.
   URL passwords, bearer tokens, vendor tokens and `name=value` pairs with sensitive names (value only,
   so logs stay readable); `--dry-run` prints exactly what would be sent. Corpus-tested both ways:
   22 secret shapes redacted, 25 ordinary lines untouched.
-- `install-project.sh`: also writes a scoped allow rule for the worker command, so a call does not
+- `install-project.sh`: wires every existing worktree, including one that has no local settings yet; also writes a scoped allow rule for the worker command, so a call does not
   stop at a permission prompt.
 - `INSTALL_PROMPT.md` step 5b: skill stubs now carry the `source_spec:` marker, so the capture hook no
   longer stages them as new skills.
