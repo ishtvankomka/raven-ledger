@@ -86,7 +86,9 @@ and note it in the final report.
    .claude/library/skills/design/ set — those are trigger-loaded through the design-taste-motion
    stack module, not registered), create .claude/skills/<name>/SKILL.md containing the library
    file's `name:` and `description:` VERBATIM (the description is what the harness matches on, so
-   never paraphrase or truncate it) plus the loader keys `always_on`/`activation`/`context_cost`,
+   never paraphrase or truncate it) plus the loader keys `always_on`/`activation`/`context_cost`
+   and the stub marker `source_spec: .claude/library/skills/<name>/SKILL.md` (as in step 4 — without
+   it the mesh captures the stub back into incoming/ as if it were a newly authored skill),
    and this body:
      "Follow the full skill at .claude/library/skills/<name>/SKILL.md — read it before acting.
       Inherit .claude/library/GLOBAL_PREFERENCES.md as your standing operating contract."

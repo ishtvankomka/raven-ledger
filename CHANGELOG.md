@@ -15,6 +15,8 @@ gets an entry here.
 - `sync/install-project.sh`: also wires the note and applies machine-local token tuning
   (`CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000`) to the project and its existing worktrees.
 - Docs: handoff threshold restated in absolute tokens; token-economy rules in `GLOBAL_PREFERENCES.md`.
+- `INSTALL_PROMPT.md` step 5b: skill stubs now carry the `source_spec:` marker, so the capture hook no
+  longer stages them as new skills.
 
 ## 1.0.0 — 2026-08-24
 

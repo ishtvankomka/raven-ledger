@@ -3545,7 +3545,26 @@
     "worker",
     "yourself"
    ],
-   "boost": []
+   "boost": [
+    "build",
+    "ci",
+    "delegate",
+    "dump",
+    "error",
+    "gemini",
+    "giant",
+    "huge",
+    "lines",
+    "logfile",
+    "logs",
+    "reading",
+    "server",
+    "stack",
+    "thousands",
+    "trace",
+    "traceback",
+    "transcript"
+   ]
   },
   {
    "kind": "skill",

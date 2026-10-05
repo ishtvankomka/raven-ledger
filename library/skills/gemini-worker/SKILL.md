@@ -1,6 +1,7 @@
 ---
 name: gemini-worker
 description: "Delegate bulk, low-judgment reading to Gemini Flash through a CLI so only the answer enters your context: logs, test or build output over ~200 lines, long docs, PDFs, images, long-text summaries. Use before reading such material yourself. Never for edits, exact counts, or secrets."
+keywords: "logfile, error logs, server logs, ci logs, build logs, stack trace, traceback, huge dump, giant dump, transcript, thousands of lines, delegate reading, gemini"
 inherits: ../../GLOBAL_PREFERENCES.md
 always_on: false
 activation: "any repo, when you are about to read bulk output or a long document for facts; needs Gemini keys (~/.config/raven-ledger/gemini.env or $GEMINI_API_KEYS) - without them the CLI exits 3 and you fall back to local tools"
