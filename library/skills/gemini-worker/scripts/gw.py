@@ -6,6 +6,7 @@ material. Stdlib only (python3.8+), no install step.
   gw.py "which tests fail and why? cite lines" build.log
   npm test 2>&1 | gw.py "root cause?" -          # '-' = stdin as a file
   gw.py --search "current stable release of <tool>?"
+  gw.py --dry-run "q" app.log                    # show exactly what would be sent; nothing leaves
 
 Keys come from GEMINI_API_KEYS (comma-separated) or ~/.config/raven-ledger/gemini.env and are
 rotated on HTTP 429. Cooldowns are shared between invocations (state dir), so a key that just
@@ -66,12 +67,43 @@ MEDIA = {".pdf": "application/pdf", ".png": "image/png", ".jpg": "image/jpeg",
 
 POSIX = {"[:alnum:]": "A-Za-z0-9", "[:alpha:]": "A-Za-z", "[:digit:]": "0-9", "[:space:]": r"\s",
          "[:upper:]": "A-Z", "[:lower:]": "a-z", "[:xdigit:]": "0-9A-Fa-f"}
-# Shapes the shared list may not cover: the worker's own key format, and key=value assignments
-# (the commonest way a secret reaches a log). Long values only, so prose cannot trip them.
+# The one limit on what the worker may be sent: env keys and secret values. Everything else goes.
+# Shapes that are secrets wherever they appear. The shared list (guardrails/secret-patterns.txt) is
+# loaded first; these cover what it does not: the worker's own key format, a whole JWT (the shared
+# pattern stops before the signature) and common vendor tokens.
 EXTRA_SECRET_PATTERNS = [
     r"AQ\.[A-Za-z0-9_-]{30,}",
-    r"(api[_-]?key|secret|token|passw(or)?d|authorization)[\"']?\s*[:=]\s*[\"']?[A-Za-z0-9_./+=-]{20,}",
+    r"eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}",
+    r"\bsk-[A-Za-z0-9_-]{20,}",
+    r"\bxox[abprs]-[A-Za-z0-9-]{10,}",
+    r"hooks\.slack\.com/services/[A-Za-z0-9/]{20,}",
+    r"(?<!\d)\d{8,10}:[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])",   # Telegram bot token (sits right after "bot" in URLs)
+    r"\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}",
+    r"\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}",
+    r"\b(?:npm|glpat)[_-][A-Za-z0-9_-]{20,}",
 ]
+# Structural rules. A PEM block is redacted whole (the shared list only catches its header line).
+PEM_BLOCK = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S)
+URL_CREDENTIALS = re.compile(r"(\b[a-z][a-z0-9+.-]*://[^/\s:@]*:)([^/\s@]{3,})(?=@)", re.I)  # user may be empty (redis://:pw@host)
+AUTH_SCHEME = re.compile(r"(\b(?:bearer|basic)\s+)([A-Za-z0-9+/=_.~-]{12,})", re.I)
+# name = value, name: value, "name": "value". Whether the NAME is sensitive is judged in code, by
+# word segments rather than substrings: `monkey` and `keyboard` are fine, `apiKey` and DB_PASSWORD
+# are not. Only the value is replaced, so a log stays readable (password=[REDACTED]).
+ASSIGNMENT = re.compile(r"""([A-Za-z_][\w.-]*)(["']?\s*[:=]\s*)(["']?)([^\s"',;&)]{3,})""")
+SENSITIVE_SUBSTR = ("secret", "token", "password", "passwd", "apikey", "accesskey", "privatekey", "credential",
+                    "authorization", "bearer", "dsn", "databaseurl", "connectionstring", "signingkey",
+                    "encryptionkey", "masterkey", "cookie")
+SENSITIVE_SEGMENT = {"key", "pwd", "pass", "auth", "private", "creds", "cred"}
+BENIGN_KEY_PREFIX = {"primary", "foreign", "sort", "cache", "partition", "index", "unique", "composite", "group",
+                     "order", "lookup", "hash", "shard", "idempotency", "storage", "translation", "message",
+                     "object", "map", "lock", "dedupe", "routing"}
+# Names that contain "token" but are not secrets: pagination cursors, counters, types.
+BENIGN_NAME = re.compile(r"(?:next|prev|previous|page|continuation|cursor|csrf|xsrf)token|token(?:count|type|expiry|ttl|id|name|url|length|limit|usage|used)|tokens$")
+# Values that are references, placeholders or states, not secrets: password: required, token: ${TOKEN}.
+BENIGN_VALUE = re.compile(
+    r"^(?:\d+|true|false|null|none|nil|yes|no|on|off|undefined|empty|required|optional|string|number|value|bearer|basic"
+    r"|expired|invalid|missing|valid|revoked|denied|failed|success|ok|error|unauthorized|forbidden"
+    r"|\$\{?\w+\}?|<[^>]*>|%[sd]|\{\{.*|\[REDACTED.*|\*+|x{3,}|process\.env\..*|os\.environ.*|os\.getenv.*|getenv\(.*)$", re.I)
 
 
 class Fail(Exception):
@@ -201,12 +233,37 @@ def secret_regexes():
     return out
 
 
+def sensitive_name(name):
+    flat = re.sub(r"[^a-z0-9]", "", name.lower())
+    if BENIGN_NAME.search(flat):
+        return False
+    if any(w in flat for w in SENSITIVE_SUBSTR):
+        return True
+    segs = [s for s in re.split(r"[^a-z0-9]+", re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()) if s]
+    return any(s in SENSITIVE_SEGMENT and not (s == "key" and i and segs[i - 1] in BENIGN_KEY_PREFIX)
+               for i, s in enumerate(segs))
+
+
 def redact(text, regexes):
-    n = 0
+    """Replace secret values; -> (text, number of replacements)."""
+    text, n = PEM_BLOCK.subn("[REDACTED PRIVATE KEY]", text)
     for rx in regexes:
         text, k = rx.subn("[REDACTED]", text)
         n += k
-    return text, n
+    text, k = URL_CREDENTIALS.subn(r"\1[REDACTED]", text)
+    n += k
+    text, k = AUTH_SCHEME.subn(r"\1[REDACTED]", text)
+    n += k
+    hits = [0]
+
+    def assignment(m):
+        name, sep, quote, value = m.groups()
+        if BENIGN_VALUE.match(value) or not sensitive_name(name):
+            return m.group(0)
+        hits[0] += 1
+        return name + sep + quote + "[REDACTED]"
+
+    return ASSIGNMENT.sub(assignment, text), n + hits[0]
 
 
 def build_parts(items, prompt, args):
@@ -448,6 +505,7 @@ def parse(argv):
     ap.add_argument("-v", "--verbose", action="store_true", help="diagnostics on stderr")
     ap.add_argument("--list-models", action="store_true", help="print usable Gemini models and exit")
     ap.add_argument("--check", action="store_true", help="ping every key and report its status")
+    ap.add_argument("--dry-run", action="store_true", help="print exactly what would be sent (after redaction); no network, no keys needed")
     ap.add_argument("--version", action="version", version="gw " + VERSION)
     return ap.parse_intermixed_args(argv)  # options may follow the prompt/files
 
@@ -477,7 +535,7 @@ def main(argv=None):
         marker = disabled_here()
         if marker:
             raise Fail(USAGE, "disabled for this project (%s exists) - use local tools" % marker)
-        if not keys:
+        if not keys and not args.dry_run:
             raise Fail(CONFIG, "no API keys: set GEMINI_API_KEYS or put GEMINI_API_KEYS=k1,k2 in %s" % path)
         try:
             if os.path.isfile(path) and os.stat(path).st_mode & 0o077:
@@ -517,6 +575,13 @@ def main(argv=None):
         parts, chars_in, redacted = build_parts(items, prompt, args)
         if redacted:
             sys.stderr.write("gw: redacted %d secret-like string(s) before sending\n" % redacted)
+        if args.dry_run:
+            for part in parts:
+                sys.stdout.write((part["text"] if "text" in part else "(media: %s, %d bytes)" % (
+                    part["inlineData"]["mimeType"], len(part["inlineData"]["data"]) * 3 // 4)) + "\n")
+            sys.stderr.write("gw: dry run - %d chars in %d part(s), %d secret-like string(s) redacted, nothing sent\n"
+                             % (chars_in, len(parts), redacted))
+            return OK
         body = build_body(parts, args, model)
         t0 = time.time()
         payload, slot, retries = generate(keys, model, body, args, args.verbose)

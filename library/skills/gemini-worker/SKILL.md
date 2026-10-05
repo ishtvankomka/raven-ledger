@@ -45,9 +45,12 @@ words; ignore benign noise"), and always ask for line numbers so you can verify.
 
 - Anything you will edit or must quote exactly — locate with `grep -n`, then read only that range.
 - Exact counts, complete lists, checksums — `grep -c`, `wc`, `awk`. Models miscount.
-- Secrets, credentials, personal or client-confidential data. The CLI refuses env/key files and
-  redacts known secret shapes, but that is a backstop, not permission: unpaid-tier Gemini usage may
-  be used by Google to improve its products. The question text is sent too — keep secrets out of it.
+- Env keys and secret values (tokens, passwords, API keys, private keys, `.env` contents) — the one
+  limit on what may be sent. Everything else, including logs, client and personal data, may go. The
+  CLI refuses env/key files and redacts known secret shapes in files, stdin and the question, but you
+  are the first gate: never paste a secret into the question or pipe a file you know holds one. PDFs
+  and images are sent as-is and cannot be scanned. `gw --dry-run …` prints exactly what would be sent
+  while nothing leaves the machine.
 - Material under ~100 lines, or anything one `grep -n … | head` answers: the call costs more than it saves.
 - Judgment — design decisions, security verdicts, review conclusions. The worker extracts; you decide.
 
@@ -82,12 +85,14 @@ cost this skill exists to avoid.
 - Rotation is automatic: a key that returns 429 is skipped for its cooldown by **every** later call,
   including parallel subagents (shared state in `~/.cache/raven-ledger/`). 5xx/network errors back
   off and retry; invalid keys are skipped. Keep to ≤3 concurrent worker calls.
-- `gw --check` pings every key · `gw --list-models` · `-v` shows slot/tokens/retries · `--json` for
+- `gw --check` pings every key · `gw --list-models` · `--dry-run` previews the outgoing request · `-v` shows slot/tokens/retries · `--json` for
   scripts · `GEMINI_MODEL` overrides the default alias `gemini-flash-latest` (a pinned version breaks
   the day Google retires it) · `--think low|medium|high` (default low).
 - Offline self-test (no network, no keys): `python3 <this skill's directory>/scripts/test_gw.py`.
-- Opt a project out entirely (client work that must not leave the machine): `touch .claude/no-worker` —
-  the CLI then refuses to send anything and the session-start note stays silent.
+- Switch the worker off for one project: `touch .claude/no-worker` — the CLI then refuses to send
+  anything and the session-start note stays silent.
+- Wired projects get a scoped allow rule (`Bash(python3 …/gw.py:*)`) in their local settings, so a call
+  does not stop at a permission prompt; `RAVEN_WORKER_ALLOW=0 sync/install-project.sh` skips it.
 - Usage log (counts only, never content): `~/.cache/raven-ledger/gemini-worker.log`.
 
 ## What it measured (synthetic ground truth, run before this skill shipped)

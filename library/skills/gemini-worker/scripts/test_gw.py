@@ -35,6 +35,48 @@ def rate(delay="7s", msg="quota"):
 BADKEY = err(400, "INVALID_ARGUMENT", "API key not valid. Please pass a valid API key.", [{"reason": "API_KEY_INVALID"}])
 DOWN = err(503, "UNAVAILABLE", "The model is overloaded.")
 
+# ---- the one hard limit: env keys and secret values never leave. Every secret is assembled at runtime
+# so no secret-shaped literal sits in source (the repo's own pre-commit gate would flag it).
+def _j(*p):
+    return "".join(p)
+
+
+SECRETS = [  # (label, text, fragment that must NOT survive redaction)
+    ("aws key id", "key id " + _j("AKIA", "ABCDEFGHIJKLMNOP"), "ABCDEFGHIJKLMNOP"),
+    ("aws secret", "aws_secret_access_key = " + _j("wJalrXUtnFEMI/K7MDENG", "/bPxRfiCYEXAMPLEKEY"), "wJalrXUtnFEMI"),
+    ("github pat", "token " + _j("ghp_", "a1B2" * 10), "a1B2a1B2"),
+    ("pem block", _j("-----BEGIN ", "RSA PRIVATE KEY-----") + "\nMIIEowIBAAKCAQEA7bq98\nQxz1n0X\n" + _j("-----END ", "RSA PRIVATE KEY-----") + "\nafter", "MIIEowIBAAKC"),
+    ("pem truncated", _j("-----BEGIN ", "PRIVATE KEY-----") + "\nMIIEvQIBADANBgkqhkiG9w0B\n", "MIIEvQIBADANBg"),
+    ("jwt", "jwt " + _j("eyJhbGciOiJIUzI1NiJ9", ".", "eyJzdWIiOiIxMjM0NTY3ODkwIn0", ".", "SflKxwRJSMeKKF2QT4fwpMeJf36POk6y"), "SflKxwRJSMeKKF2QT4fw"),
+    ("bearer", "Authorization: Bearer " + _j("abcdEFGH", "ijklMNOP", "qrstUVWX"), "abcdEFGHijkl"),
+    ("url password", "DATABASE_URL=postgres://app:" + _j("S3cr", "etPw9") + "@db.internal:5432/app", "S3cretPw9"),
+    ("redis url, no user", "connecting to redis://:" + _j("pa55", "w0rd") + "@cache:6379", "pa55w0rd"),
+    ("env short password", "DB_PASSWORD=hunter22\nNODE_ENV=production", "hunter22"),
+    ("export style", "export STRIPE_SECRET_KEY=" + _j("sk_live_", "51Habc", "DEFghi", "JKLmno"), "51HabcDEF"),
+    ("inline password", "login failed user=bob password=" + _j("Tr0ub4", "dor3") + " ip=10.0.0.1", "Tr0ub4dor3"),
+    ("json api key", '{"api_key": "' + _j("k9X2", "mQ7p", "Lw3z", "Yt5r") + '", "id": 7}', "k9X2mQ7p"),
+    ("camelCase", "const cfg = { clientSecret: '" + _j("Zq8w", "Er5t", "Yu1i") + "' }", "Zq8wEr5t"),
+    ("openai style", "OPENAI=" + _j("sk-", "proj-", "A1b2C3d4E5f6G7h8I9j0"), "A1b2C3d4E5"),
+    ("slack", "slack " + _j("xoxb", "-123456789012-", "abcdefghijKLMN"), "abcdefghijKLMN"),
+    ("telegram bot", "bot" + _j("123456789", ":", "AAH", "x" * 32) + "/getMe", "AAHxxxx"),
+    ("npmrc", "//registry.npmjs.org/:_authToken=" + _j("npm_", "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5"), "A1b2C3d4E5f6"),
+    ("google key", "key=" + _j("AIza", "SyA-", "1234567890abcdefghijklmnopqrstu"), "1234567890abcdef"),
+    ("yaml password", "password: 'correct-horse-battery'", "correct-horse"),
+    ("cookie", "Cookie: sid=" + _j("a1b2", "c3d4", "e5f6"), "a1b2c3d4"),
+    ("worker's own key", "slot " + _j("AQ.", "Ab8RN6", "IPA2JEjxTxMg", "-DIVQhGdvXMAkLIno2Lv9_2iWfgLWMiQ"), "Ab8RN6IPA2"),
+]
+ORDINARY = [  # must pass through byte-for-byte: redacting ordinary logs would make the worker useless
+    "GET /api/v1/items/42 200 12ms", "commit 3f2a9c1d4e5b6a7c8d9e0f1a2b3c4d5e6f7a8b9c merged",
+    "uuid 123e4567-e89b-12d3-a456-426614174000", "max_tokens=4096 temperature=0.2", "primary_key: id",
+    "token: ${TOKEN}", "password: required", "cache_key=user:42", "api_key: <your-key-here>", "DEBUG=true",
+    "keyboard=us monkey=patched", "sort_key=created_at", 'api_key = os.environ["API_KEY"]',
+    "apiKey: process.env.STRIPE_KEY,", "token: expired for user 7", "Error: connect ECONNREFUSED 127.0.0.1:5432",
+    "INFO  [auth] user bob logged in from 10.0.0.7", "tokens_used=1532 cost=0.02", "next_page_token=abc",
+    "author=bob title=Hello", "https://example.com/docs/page?id=7&lang=en", "Content-Type: application/json",
+    "key=value pairs here", "foreign_key: user_id", "password_min_length: 12",
+    "2026-10-05 09:00:00 INFO [api] GET /v1/items/123 200 15ms",
+]
+
 
 class Mock(BaseHTTPRequestHandler):
     script, seen = {}, []  # key -> [(status, payload)] consumed in order, the last one repeats
@@ -283,6 +325,44 @@ class GW(unittest.TestCase):
         Mock.script = {"sekrit-key-123": [err(500, "INTERNAL", "boom sekrit-key-123 leaked")]}
         code, out, e = self.run_gw("q", "--retries", "0", keys="sekrit-key-123")
         self.assertNotIn("sekrit-key-123", e + out)
+
+    def test_every_secret_shape_is_redacted(self):
+        rx = gw.secret_regexes()
+        for label, text, fragment in SECRETS:
+            out, n = gw.redact(text, rx)
+            self.assertNotIn(fragment, out, label)
+            self.assertGreaterEqual(n, 1, label)
+
+    def test_ordinary_text_is_not_touched(self):
+        rx = gw.secret_regexes()
+        for text in ORDINARY:
+            self.assertEqual(gw.redact(text, rx), (text, 0), text)
+
+    def test_dry_run_shows_the_redacted_request_and_sends_nothing(self):
+        f = self.file("a.log", "ok\nlogin password=hunter22 failed\n")
+        code, out, e = self.run_gw("--dry-run", "what failed?", f, keys="")  # no keys needed to preview
+        self.assertEqual(code, 0)
+        self.assertNotIn("hunter22", out)
+        self.assertIn("password=[REDACTED]", out)
+        self.assertIn("TASK: what failed?", out)
+        self.assertIn("nothing sent", e)
+        self.assertEqual(Mock.seen, [])
+
+    def test_piped_env_dump_keeps_ordinary_settings_and_loses_the_secrets(self):
+        code, out, _ = self.run_gw("--dry-run", "which settings are set?", "-", keys="",
+                                   stdin="NODE_ENV=production\nPORT=3000\nDB_PASSWORD=hunter22\nAPI_TOKEN=abc123def\n")
+        self.assertEqual(code, 0)
+        self.assertIn("NODE_ENV=production", out)
+        self.assertIn("PORT=3000", out)
+        self.assertNotIn("hunter22", out)
+        self.assertNotIn("abc123def", out)
+
+    def test_everything_else_may_be_sent(self):
+        f = self.file("customer.log", "order 4412 for Jane Doe <jane@example.com>, card ending 4242, ship to 12 Main St\n")
+        code, out, e = self.run_gw("who ordered?", f)
+        self.assertEqual(code, 0)
+        self.assertIn("Jane Doe", json.dumps(Mock.seen[0][1]), "personal and client data is allowed; only secrets are withheld")
+        self.assertEqual(e, "")
 
     def test_check_reports_each_slot(self):
         Mock.script = {"a": [ok("pong")], "b": [rate()]}

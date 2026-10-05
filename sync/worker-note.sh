@@ -28,5 +28,7 @@ if [ -z "${GEMINI_API_KEYS:-}${GEMINI_API_KEY:-}" ]; then
     "${GW_ENV_FILE:-$HOME/.config/raven-ledger/gemini.env}" 2>/dev/null || exit 0
 fi
 
-printf '%s\n' "[raven-ledger] Gemini worker available (saves context). Before reading >200 lines of log/test/build output, a long doc/PDF, or long text only for facts, delegate it: python3 \"$GW\" \"QUESTION\" [FILE... | -]  ('-' pipes a command's output; only the answer returns). Not for edits needing exact text, exact counts, or secrets/client data; verify claims before acting. On exit 3-6 do not retry: use grep/head/tail locally, or ask the user. Rules: $RAVEN_ROOT/library/skills/gemini-worker/SKILL.md"
+# The command is deliberately unquoted: it is copied verbatim into a Bash call, and the allow rule
+# install-project.sh writes matches the literal prefix. (A path with spaces already breaks the hooks.)
+printf '%s\n' "[raven-ledger] Gemini worker available (saves context). Before reading >200 lines of log/test/build output, a long doc/PDF, or long text only for facts, delegate it: python3 $GW \"QUESTION\" [FILE... | -]  ('-' pipes a command's output; only the answer returns). Any data may be sent except env keys and secret values (redacted or refused automatically). Not for edits needing exact text or exact counts; verify claims before acting. On exit 3-6 do not retry: use grep/head/tail locally, or ask the user. Rules: $RAVEN_ROOT/library/skills/gemini-worker/SKILL.md"
 exit 0

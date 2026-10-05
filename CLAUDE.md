@@ -46,8 +46,9 @@ mesh stops re-capturing it).
   `python3 library/skills/gemini-worker/scripts/gw.py "QUESTION" [FILE | -]` (`-` pipes a command's
   output; only the answer returns). Triggers, limits and the exit-code fallback table:
   `library/skills/gemini-worker/SKILL.md`.
-- Never delegate edits that need exact text, exact counts, or anything from `projects/` (client
-  facts). Verify a worker claim with `grep` / `sed -n` before acting on it.
+- The one limit on what the worker may be sent: env keys and secret values (the CLI redacts or
+  refuses them). Everything else may go. Never delegate edits that need exact text or exact counts;
+  verify a worker claim with `grep` / `sed -n` before acting on it.
 - If the worker fails (exit 3-6) do not loop: a blocking, cheap step → grep/head/tail locally;
   large or optional → ask.
 - Keys live in `~/.config/raven-ledger/gemini.env` (outside the repo, mode 600). Never commit them.

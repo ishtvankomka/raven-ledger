@@ -17,6 +17,8 @@
 #       60 days of real sessions: calls made with a 200K+ prompt were ~42% of calls but ~70% of
 #       weighted cost, because every call re-reads the whole context. Compacting near 355K cuts
 #       ~23% of that cost. RAVEN_COMPACT_WINDOW=<n> changes it; =0 skips the tuning.
+# Allow rule: a scoped Bash(python3 …/gw.py:*) entry so the worker does not stop at a permission
+#   prompt (RAVEN_WORKER_ALLOW=0 skips it).
 # Usage: install-project.sh <project-dir>
 set -u
 source "$(cd "$(dirname "$0")" && pwd)/lib.sh"
@@ -48,6 +50,15 @@ worker = os.path.join(sync, "worker-note.sh")
 OURS = ("capture.sh", "pull.sh", "on-prompt.sh", "session-ledger.sh", "session-digest.sh",
         "handoff-lib.sh", "worker-note.sh")
 
+# A permission prompt is the likeliest way the worker fails in a real session (python3 is on no
+# project's allow list), and in a subagent or headless run it means a denial. Scoped to this one
+# script, in the machine-local file. RAVEN_WORKER_ALLOW=0 opts out.
+gw = os.path.join(os.path.dirname(sync), "library", "skills", "gemini-worker", "scripts", "gw.py")
+ALLOW = []
+if os.environ.get("RAVEN_WORKER_ALLOW", "1") != "0" and os.path.exists(gw):
+    ALLOW = ["Bash(python3 %s:*)" % gw, 'Bash(python3 "%s":*)' % gw,
+             "Bash(python3 .claude/library/skills/gemini-worker/scripts/gw.py:*)"]
+
 TUNING = {}
 window = os.environ.get("RAVEN_COMPACT_WINDOW", "400000")
 if window not in ("", "0"):
@@ -70,7 +81,7 @@ def decided_elsewhere(key, settings_path):
 
 
 def wire(target, strict):
-    """Wire one settings.local.json. Returns (hooks_added, pruned, tuned), or None if it was skipped.
+    """Wire one settings.local.json. Returns (hooks_added, pruned, tuned, allowed), or None if skipped.
     strict=True (the project itself): a malformed file aborts and nothing is changed.
     strict=False (a worktree's copy): a malformed file is left alone."""
     data = {}
@@ -90,7 +101,7 @@ def wire(target, strict):
         return None
 
     hooks = data.setdefault("hooks", {})
-    changed, pruned, tuned = [], [], []
+    changed, pruned, tuned, allowed = [], [], [], []
 
     # Drop hook entries whose script no longer exists. A dangling hook is not inert — the harness
     # tries to run it every time the event fires, so a moved or renamed toolset leaves every
@@ -144,15 +155,21 @@ def wire(target, strict):
             env = data["env"]
             tuned.append(f"{key}={value}")
 
-    if changed or pruned or tuned:
+    perm = data.get("permissions") if isinstance(data.get("permissions"), dict) else {}
+    have = list(perm.get("allow") or [])
+    allowed = [rule for rule in ALLOW if rule not in have]
+    if allowed:
+        data["permissions"] = dict(perm, allow=have + allowed)
+
+    if changed or pruned or tuned or allowed:
         with open(target, "w") as f:
             json.dump(data, f, indent=2)
             f.write("\n")
-    return changed, pruned, tuned
+    return changed, pruned, tuned, allowed
 
 
 def describe(res):
-    changed, pruned, tuned = res
+    changed, pruned, tuned, allowed = res
     bits = []
     if changed:
         bits.append("wired " + ", ".join(changed) + " hook(s)")
@@ -160,6 +177,8 @@ def describe(res):
         bits.append("pruned %d dead hook(s): %s" % (len(pruned), ", ".join(sorted(set(pruned)))))
     if tuned:
         bits.append("tuned env " + ", ".join(tuned))
+    if allowed:
+        bits.append("allowed the worker command (%d rule(s))" % len(allowed))
     return "; ".join(bits)
 
 
@@ -172,7 +191,7 @@ wts = sorted(glob.glob(os.path.join(proj, ".claude", "worktrees", "*", ".claude"
 touched = 0
 for w in wts:
     r = wire(w, False)
-    if r and (r[0] or r[1] or r[2]):
+    if r and any(r):
         touched += 1
 if wts:
     print(f"install-project: {len(wts)} existing worktree(s) with local settings — {touched} updated")

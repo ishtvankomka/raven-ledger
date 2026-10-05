@@ -15,6 +15,12 @@ gets an entry here.
 - `sync/install-project.sh`: also wires the note and applies machine-local token tuning
   (`CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000`) to the project and its existing worktrees.
 - Docs: handoff threshold restated in absolute tokens; token-economy rules in `GLOBAL_PREFERENCES.md`.
+- `gw.py`: secrets are the only limit on what may be sent. Redaction now covers whole PEM blocks, JWTs,
+  URL passwords, bearer tokens, vendor tokens and `name=value` pairs with sensitive names (value only,
+  so logs stay readable); `--dry-run` prints exactly what would be sent. Corpus-tested both ways:
+  22 secret shapes redacted, 25 ordinary lines untouched.
+- `install-project.sh`: also writes a scoped allow rule for the worker command, so a call does not
+  stop at a permission prompt.
 - `INSTALL_PROMPT.md` step 5b: skill stubs now carry the `source_spec:` marker, so the capture hook no
   longer stages them as new skills.
 
