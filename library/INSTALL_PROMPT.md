@@ -123,7 +123,12 @@ and note it in the final report.
      "slow"/perf→/perf-audit + performance-engineer · testing→/test-sweep + test-automator ·
      any launch→/pre-launch (security+legal+rotation+tests+perf gate).
    - Context budget: match-before-load, delegate heavy work to subagents, one design skill at a
-     time, /handoff at ~55% context.
+     time, /handoff at ~250K tokens (or ~55% of the window, whichever is lower).
+   - Worker (only if .claude/library/skills/gemini-worker/ exists): three lines — delegate bulk
+     reading (command output over ~200 lines, long docs/PDFs, long-text summaries) with
+     `python3 .claude/library/skills/gemini-worker/scripts/gw.py "QUESTION" [FILE|-]`; never for
+     exact-text edits, exact counts, or secrets; on exit 3-6 fall back to grep/head/tail or ask.
+     Full rules live in the skill — the section only carries the triggers.
    - A LEGAL_FACTS block (company legal name, address, registration id, contact/DPO email, target
      markets) filled with TODO placeholders — legal-shield refuses to generate documents until the
      operator fills it. UPGRADE RULE: if the existing marked section already contains a

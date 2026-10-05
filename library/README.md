@@ -58,14 +58,21 @@ Rules the orchestrator follows:
    their *summaries*, not their working set. This is the primary defense against bloat.
 3. **One design skill at a time.** `design-taste-motion` design skills are `context_cost: high`; load a single skill for
    the task, never the whole `skills/design/` set.
-4. **Hand off before you're full.** When a session crosses ~55%, run [`/handoff`](commands/handoff.md) →
-   it writes a ≤1500-token capsule to `.claude/handoff/` and seeds a fresh session
-   (see [`handoff/README.md`](handoff/README.md)).
+4. **Hand off before you're full.** When a session crosses ~55% of the window or ~250K tokens,
+   whichever is lower, run [`/handoff`](commands/handoff.md) → it writes a ≤1500-token capsule to
+   `.claude/handoff/` and seeds a fresh session (see [`handoff/README.md`](handoff/README.md)). The
+   mesh backs this with a hard cap — auto-compaction at 400K (`sync/README.md` § Token tuning) —
+   because every call re-reads the whole context.
 5. **Every module file carries `context_cost` + `always_on` + `activation` frontmatter** so a loader can
    budget mechanically. Exceptions: vendored files under `skills/design/` are unmodified upstream copies —
    their budget metadata lives in [`skills/design/MANIFEST.md`](skills/design/MANIFEST.md); non-module
    files (this README, `GLOBAL_PREFERENCES.md`, `settings.template.json`, and
    `handoff/HANDOFF_TEMPLATE.md`, whose frontmatter is the capsule's own schema) are exempt.
+
+6. **Offload bulk reading.** Command output over ~200 lines, long docs/PDFs and long-text summaries
+   go through [`skills/gemini-worker`](skills/gemini-worker/SKILL.md) — Gemini Flash reads, only the
+   answer enters context. Whatever enters context is re-read on every later call, so a bulk read
+   costs far more than its own size.
 
 Frontmatter vocabulary (mechanical loader contract):
 - `context_cost:` enum is exactly `low | medium | high`.
@@ -137,7 +144,8 @@ Tier-B scans `penetration-tester`/`compliance-auditor`, niche docs). Set per fil
 | "remember/log this" / change summary / test impact | `project-scribe` |
 | "learn from this" / stop repeating a mistake / periodic review | `self-improver` (or `/retro`) |
 | unattended run of a pre-approved backlog | `/overnight` (branches only, gated, never pushes) |
-| context filling up (~55%) | `/handoff` → `handoff-coordinator` |
+| a command's output to read is over ~200 lines · a long doc/PDF · long text needed only for facts | `skills/gemini-worker` (Gemini Flash reads; only the answer enters context) |
+| context filling up (~55% or ~250K tokens) | `/handoff` → `handoff-coordinator` |
 
 ## Safety posture (consistent across all turns of this build)
 Security/compliance tools are **routed, not disabled**: Tier A stays on in every stage (cheap, and it
@@ -164,11 +172,12 @@ default that ships to clients.
   ui-conventions-contract · payments · telegram-auth · spotify-web-api · sentry-observability ·
   cloud-infra-iac · llm-features · llm-provider-router · language-specialists ·
   specialized-domains · mcp-servers · project-scaffolding · design-taste-motion
-- **Skills (21 + vendored):** replication pipeline — clickable-inventory · content-capture ·
+- **Skills (22 + vendored):** replication pipeline — clickable-inventory · content-capture ·
   media-harvest · replication-plan · exact-implement · replica-compare · replica-fix ·
   final-validate — shipping — verify-change · feature-lifecycle · paas-deploy-check ·
   data-isolation-verify · local-preview · commit-changelog · oauth-login-verification — craft —
-  punch-list · ui-restraint · web-share-capture · i18n-catalogs · session-history · git-authorship — plus `skills/design/`
+  punch-list · ui-restraint · web-share-capture · i18n-catalogs · session-history · git-authorship — token economy — gemini-worker (the CLI is
+  `skills/gemini-worker/scripts/gw.py`, its offline tests `skills/gemini-worker/scripts/test_gw.py`) — plus `skills/design/`
   (5 vendored design skills; budget in `MANIFEST.md`, provenance in `ATTRIBUTION.md`)
 - **Guardrails (8 + shared pattern list):** `secret-patterns.txt` is the single secret-pattern
   source read by the mesh, the pre-commit hook and secret-scanner — Tier A: secret-scanner · dependency-vuln-audit — Tier B: security-auditor ·

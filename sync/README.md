@@ -52,7 +52,7 @@ calls it after review, or you run it yourself.
 | `pull.sh` | SessionStart hook — apply updates, re-sync library, catch-up capture |
 | `flush.sh` | commit staged captures + push pending commits (also fine manually) |
 | `push-project.sh <dir>` | manual full scan of one project, synchronous |
-| `install-project.sh <dir>` | wire the mesh hooks (capture, pull, router, ledger, digest) into a project's `.claude/settings.local.json` (idempotent) |
+| `install-project.sh <dir>` | wire the mesh hooks (capture, pull, router, ledger, digest, worker note) and the token tuning into a project's — and its existing worktrees' — `.claude/settings.local.json` (idempotent) |
 | `secret-scan.sh <path>` | standalone run of the same secret gate |
 | `on-prompt.sh` | UserPromptSubmit hook — injects the tools that match this message |
 | `router-lib.sh` | `router_match` — local retrieval over the library index (no network, no LLM) |
@@ -60,6 +60,7 @@ calls it after review, or you run it yourself.
 | `handoff-lib.sh` | `context_occupancy` — measure the live transcript when YOU ask; never speaks on its own |
 | `session-ledger.sh` | Stop hook — one line per turn into `.claude/handoff/sessions/<date>-<session>.md` |
 | `session-digest.sh` | SessionStart hook — hands a new session a short digest of recent ones |
+| `worker-note.sh` | SessionStart hook — ~150-token note that the Gemini worker exists; silent unless keys are configured |
 | `upstream-check.sh` | template copies: throttled check of the original repo, one-line update suggestion (`--merge` applies it) |
 | `validate-library.sh` | mechanical contract check over `library/` (CI-friendly with `--quiet`) |
 
@@ -72,6 +73,25 @@ calls it after review, or you run it yourself.
 Hooks go into `.claude/settings.local.json` (machine-local, auto-gitignored) because
 they reference this machine's collection path. Claude Code will ask to approve the
 new hooks on the next session start — that's expected, approve once.
+
+## Token tuning and the Gemini worker
+
+Measured over 60 days of real sessions, every call re-reads the whole context: calls made with a
+200K+ prompt were ~42% of calls and ~70% of weighted cost. Two machine-local levers, both applied by
+`install-project.sh` to the project **and its existing worktrees** (each worktree keeps its own copy
+of `settings.local.json`, and most sessions run in worktrees):
+
+- `CLAUDE_CODE_AUTO_COMPACT_WINDOW=400000` — caps the context so auto-compaction fires near 355K
+  instead of near the model's full window (modelled saving ≈ 23% of weighted cost, about five
+  compactions a day across ten projects). It never overrides a value set in the shell, the project's
+  `settings.json` or `~/.claude/settings.json`. `RAVEN_COMPACT_WINDOW=<n> install-project.sh …`
+  picks another size, `=0` skips it. The variable is read by the Claude Code binary but is not in its
+  public docs; where unsupported it is simply ignored.
+- The Gemini worker (`library/skills/gemini-worker/`): `worker-note.sh` tells every session it exists,
+  so bulk reads go to Gemini Flash and only the answer enters context. Keys live in
+  `~/.config/raven-ledger/gemini.env` (outside every repo, mode 600); without keys the note is
+  silent. A client project that must not send data to a third party opts out with
+  `touch .claude/no-worker` — the CLI itself then refuses to send, not just the note.
 
 ## Staying current with the template origin
 

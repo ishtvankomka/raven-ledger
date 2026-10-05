@@ -24,7 +24,7 @@ that don't.
    state · next action · what-to-load · open questions · resume prompt).
 
 ## How a handoff runs
-1. Trigger `/handoff` (manually, or an agent triggers it when its own context crosses ~55%).
+1. Trigger `/handoff` (manually, or an agent triggers it when its own context crosses ~55% of the window or ~250K tokens, whichever comes first).
 2. The capsule is written to `.claude/handoff/HANDOFF-<slug>-<YYYY-MM-DD>.md` in the target
    project, capped at ~1500 tokens. It captures decisions and next-action — **not** the conversation.
 3. A fresh session is created and seeded with the capsule. Three ways, pick what fits:

@@ -1,8 +1,8 @@
 ---
 name: global-preferences
 description: Shared execution profile inherited by every agent, skill, and niche module in this library. Referenced, not copied.
-version: 1.1
-updated: 2026-07-08
+version: 1.2
+updated: 2026-10-05
 ---
 
 # Global Preferences Profile
@@ -21,6 +21,16 @@ disable the safety net that catches high-velocity mistakes.
   "perfect and pending."
 - **Targeted verification, not ceremony.** Test the changed surface, not the world. Keep the
   hypothesis→isolate→verify loop (it is faster than guess-patching), drop the narration.
+
+## Token economy (measured on real sessions, not aspirational)
+- **Context is re-read on every call.** A tool result is written to cache once and re-read on every
+  later call until the session ends, so bulk output is the expensive kind. Send bulk reading
+  (command output over ~200 lines, long docs/PDFs, long-text summaries) through `skills/gemini-worker`;
+  keep exact-text work (edits, quotes, counts) local.
+- **Subagents are isolated context, not free.** Pass `model:` explicitly for mechanical work
+  (search, inventory, log reading → `haiku`/`sonnet`); keep top-tier models for judgment.
+- **Fewer, fuller calls.** Batch independent tool calls in one message; chain related shell commands.
+- **Hand off at ~250K tokens**, not at the window limit; the mesh caps auto-compaction at 400K.
 
 ## Secrets & config — single-file convenience WITHOUT repo poisoning
 - **Source of truth:** one env file per environment (`env/<env>.env`) — matches the operator's

@@ -124,3 +124,5 @@ Append below. Newest at the bottom — this is a log, not a report.
 | date | item | source kind | verdict | reason |
 |---|---|---|---|---|
 | 2026-08-23 | `sync/validate-library.sh` + this ledger | library-native | promoted | the frontmatter contract was prose-only and the curation loop left no record; both are now mechanical |
+| 2026-10-05 | `skills/gemini-worker` | library-native | promoted | tool output carried in context was the largest controllable share of weighted usage; benchmarked before shipping: 95–100% fewer tokens on bulk reads with every planted fact found; secret refusal, redaction and a per-project opt-out are built in |
+| 2026-10-05 | `sync/worker-note.sh` + install-time token tuning | library-native | promoted | most sessions run in git worktrees where a project's CLAUDE.md and skill stubs are untracked, so the only channel that reaches all of them is a machine-local hook |

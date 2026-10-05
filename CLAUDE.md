@@ -38,3 +38,16 @@ mesh stops re-capturing it).
 - Safe-velocity convention: never commit secrets; reversible ops are autonomous,
   irreversible remote-state ops need explicit confirmation; force-push to main is
   never OK.
+
+## Token economy
+
+- Whatever enters context is re-read on every later call. Before reading >200 lines of command
+  output, a long doc/PDF, or long text only for facts, delegate it to the Gemini worker:
+  `python3 library/skills/gemini-worker/scripts/gw.py "QUESTION" [FILE | -]` (`-` pipes a command's
+  output; only the answer returns). Triggers, limits and the exit-code fallback table:
+  `library/skills/gemini-worker/SKILL.md`.
+- Never delegate edits that need exact text, exact counts, or anything from `projects/` (client
+  facts). Verify a worker claim with `grep` / `sed -n` before acting on it.
+- If the worker fails (exit 3-6) do not loop: a blocking, cheap step → grep/head/tail locally;
+  large or optional → ask.
+- Keys live in `~/.config/raven-ledger/gemini.env` (outside the repo, mode 600). Never commit them.
