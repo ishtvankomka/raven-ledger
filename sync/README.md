@@ -93,7 +93,7 @@ of `settings.local.json`, and most sessions run in worktrees):
   silent. Any data may be sent except env keys and secret values, which the CLI redacts or refuses.
   A project switches the worker off with `touch .claude/no-worker` — the CLI itself then refuses to
   send, not just the note. The installer also adds a scoped allow rule for the worker command
-  (`Bash(python3 <collection>/library/skills/gemini-worker/scripts/gw.py:*)`) to each local settings
+  (`Bash(python3 <collection>/library/skills/gemini-worker/scripts/gw.py *)`) to each local settings
   file, so calls do not stop at a permission prompt; `RAVEN_WORKER_ALLOW=0` skips it.
 
 ## Staying current with the template origin

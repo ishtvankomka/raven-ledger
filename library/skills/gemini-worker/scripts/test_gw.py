@@ -114,6 +114,7 @@ class GW(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.srv.shutdown()
+        cls.srv.server_close()  # release the listening socket, or Python 3.14 warns at exit
 
     def setUp(self):
         Mock.script, Mock.seen, Mock.search_script = {}, [], {}

@@ -91,7 +91,7 @@ cost this skill exists to avoid.
 - Offline self-test (no network, no keys): `python3 <this skill's directory>/scripts/test_gw.py`.
 - Switch the worker off for one project: `touch .claude/no-worker` — the CLI then refuses to send
   anything and the session-start note stays silent.
-- Wired projects get a scoped allow rule (`Bash(python3 …/gw.py:*)`) in their local settings, so a call
+- Wired projects get a scoped allow rule (`Bash(python3 …/gw.py *)`) in their local settings, so a call
   does not stop at a permission prompt; `RAVEN_WORKER_ALLOW=0 sync/install-project.sh` skips it.
 - Usage log (counts only, never content): `~/.cache/raven-ledger/gemini-worker.log`.
 

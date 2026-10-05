@@ -347,7 +347,10 @@ def http_call(url, key, body, timeout):
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status, json.loads(r.read().decode("utf-8", "replace"))
     except urllib.error.HTTPError as e:
-        raw = e.read().decode("utf-8", "replace")
+        try:
+            raw = e.read().decode("utf-8", "replace")
+        finally:
+            e.close()  # an HTTPError owns the socket; leaving it to the GC raises ResourceWarning on 3.14
         try:
             return e.code, json.loads(raw)
         except ValueError:

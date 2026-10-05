@@ -56,8 +56,11 @@ OURS = ("capture.sh", "pull.sh", "on-prompt.sh", "session-ledger.sh", "session-d
 gw = os.path.join(os.path.dirname(sync), "library", "skills", "gemini-worker", "scripts", "gw.py")
 ALLOW = []
 if os.environ.get("RAVEN_WORKER_ALLOW", "1") != "0" and os.path.exists(gw):
-    ALLOW = ["Bash(python3 %s:*)" % gw, 'Bash(python3 "%s":*)' % gw,
-             "Bash(python3 .claude/library/skills/gemini-worker/scripts/gw.py:*)"]
+    # Current Claude Code writes `Bash(cmd *)` itself; `Bash(cmd:*)` is the older prefix syntax. Both
+    # are written so whichever parser a session runs accepts the call.
+    rel = "python3 .claude/library/skills/gemini-worker/scripts/gw.py"
+    ALLOW = ["Bash(python3 %s *)" % gw, "Bash(python3 %s:*)" % gw, 'Bash(python3 "%s" *)' % gw,
+             "Bash(%s *)" % rel, "Bash(%s:*)" % rel]
 
 TUNING = {}
 window = os.environ.get("RAVEN_COMPACT_WINDOW", "400000")
